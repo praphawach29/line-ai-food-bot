@@ -13,9 +13,8 @@ const { handleSlipImage }         = require('./src/handlers/image');
 // ─── Express App ──────────────────────────────────────────────────────────────
 const app = express();
 
-// /webhook ต้องใช้ raw body สำหรับ LINE signature verification
-// route อื่น ๆ ใช้ express.json() ปกติ
-app.use(express.json());
+ /webhook ต้องใช้ raw body สำหรับ LINE signature verification
+ route อื่น ๆ ใช้ express.json() ปกติ
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 app.get('/admin', (req, res) => {
