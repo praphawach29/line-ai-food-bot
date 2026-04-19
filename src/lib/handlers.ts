@@ -149,8 +149,18 @@ async function startCheckout(userId: string, replyToken: string) {
 }
 
 async function confirmOrder(userId: string, replyToken: string) {
+  let ppName = 'นาย ทดสอบ ระบบ';
+  let ppNum = '0812345678';
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const s = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'settings.json'), 'utf-8'));
+    if (s.promptpay_name) ppName = s.promptpay_name;
+    if (s.promptpay_number) ppNum = s.promptpay_number;
+  } catch(e) {}
+
   return lineClient.replyMessage({
     replyToken,
-    messages: [{ type: 'text', text: 'สั่งซื้อสำเร็จ! กรุณาโอนเงินมาที่...' }]
+    messages: [{ type: 'text', text: `สั่งซื้อสำเร็จ! กรุณาโอนเงินยอด 80 บาท มาที่\\nพร้อมเพย์: ${ppNum}\\nชื่อบัญชี: ${ppName}\\n\\nแล้วกดส่งสลิปผ่านแชทนี้ได้เลยค่ะ` }]
   });
 }

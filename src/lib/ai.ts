@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
+import fs from 'fs';
+import path from 'path';
 
 export type AIChoice = 'gemini' | 'anthropic';
 
@@ -10,29 +12,49 @@ export interface AIRecommendation {
   tips: string | null;
 }
 
-const geminiAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-
-const anthropicAI = process.env.ANTHROPIC_API_KEY 
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
+const getGeminiClient = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const getAnthropicClient = () => {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+  return new Anthropic({ apiKey: key });
+};
 
 export async function getAIRecommendation(userMessage: string, menuList: string): Promise<AIRecommendation> {
-  const provider = (process.env.AI_PROVIDER as AIChoice) || 'gemini';
+  let provider = (process.env.AI_PROVIDER as AIChoice) || 'gemini';
   
-  const systemPrompt = `คุณคือพนักงานเสิร์ฟและผู้ช่วยแนะนำเมนูอาหารมืออาชีพประจำ "ร้านข้าวต้มนิดา" 
-บุคลิกของคุณ: สุภาพ เป็นมิตร กระตือรือร้น เต็มใจบริการ และมีความรู้เรื่องอาหารในร้านเป็นอย่างดี 
+  let storeName = 'ร้านข้าวต้มนิดา';
+  let botPrompt = 'คุณคือพนักงานเสิร์ฟและผู้ช่วยแนะนำเมนูอาหารมืออาชีพประจำ "ร้านข้าวต้มนิดา"\\nบุคลิกของคุณ: สุภาพ เป็นมิตร กระตือรือร้น เต็มใจบริการ และมีความรู้เรื่องอาหารในร้านเป็นอย่างดี';
+  
+  let geminiModel = 'gemini-2.5-flash';
+  let anthropicModel = 'claude-3-5-sonnet-20240620';
+
+  try {
+    const SETTINGS_PATH = path.join(process.cwd(), 'settings.json');
+    if (fs.existsSync(SETTINGS_PATH)) {
+      const s = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
+      if (s.store_name) storeName = s.store_name;
+      if (s.bot_prompt) botPrompt = s.bot_prompt;
+      if (s.ai_provider) provider = s.ai_provider;
+      if (s.gemini_model) geminiModel = s.gemini_model;
+      if (s.anthropic_model) anthropicModel = s.anthropic_model;
+    }
+  } catch(e) {}
+  
+  const systemPrompt = `คุณกำลังให้บริการในร้าน: ${storeName}
+คำสั่งสำหรับบุคลิกภาพ: ${botPrompt}
+
 ตอบกลับเป็นรูปแบบ JSON เท่านั้น โดยห้ามมีข้อความอื่นหรือคำอธิบายนอกกรอบ JSON เด็ดขาด
 
 รูปแบบ JSON ที่ต้องการ:
 {
-  "intro": "ข้อความต้อนรับและแนะนำสั้นๆ ด้วยความสุภาพและเป็นมิตร เช่น 'สวัสดีค่ะ/ครับ ร้านข้าวต้มนิดายินดีต้อนรับค่ะ วันนี้รับเป็นเมนูไหนดีคะ? ทางเราขอแนะนำ...'",
+  "intro": "ข้อความต้อนรับและแนะนำสั้นๆ ด้วยความสุภาพและเป็นมิตร เช่น 'สวัสดีค่ะ/ครับ ยินดีต้อนรับค่ะ วันนี้รับเป็นเมนูไหนดีคะ? ทางเราขอแนะนำ...'",
   "reason": "อธิบายถึงความพิเศษ รสชาติ หรือความน่าทานของเมนูที่คุณเลือก เพื่อกระตุ้นความน่าสนใจ",
   "menu_ids": ["M001","M002","M003"],
   "tips": "คำแนะนำเพิ่มเติมหรือทริคในการทาน (ถ้ามี) หรือคำพูดปิดเชิงบริการต้อนรับ"
 }
 
 กฎเหล็ก:
-- ทักทายและตอบกลับอย่างสุภาพเสมอ มีหางเสียง (ครับ/ค่ะ) ตามความเหมาะสม
+- ทักทายและตอบกลับอย่างสุภาพเสมอตาม System Prompt ด้านบน
 - แนะนำ 2-4 เมนูเท่านั้น เพื่อไม่ให้ลูกค้าสับสน
 - เลือกจาก menu_ids ที่มีในรายการด้านล่างเท่านั้น ห้ามสร้างเมนูขึ้นมาเอง
 - ถ้าลูกค้าไม่กินเผ็ด ให้เลือกเมนูที่ spicy_level=0 เท่านั้น พร้อมอธิบายด้วยความใส่ใจ
@@ -42,16 +64,21 @@ export async function getAIRecommendation(userMessage: string, menuList: string)
 รายการเมนูทั้งหมดที่ร้านมีวันนี้:
 ${menuList}`;
 
-  if (provider === 'anthropic' && anthropicAI) {
-    return callClaude(userMessage, systemPrompt);
-  } else {
-    return callGemini(userMessage, systemPrompt);
+  if (provider === 'anthropic') {
+    const aiClient = getAnthropicClient();
+    if (aiClient) {
+      return callClaude(userMessage, systemPrompt, anthropicModel, aiClient);
+    }
+    console.warn('Anthropic API Key missing, falling back to Gemini');
   }
+  
+  const aiClient = getGeminiClient();
+  return callGemini(userMessage, systemPrompt, geminiModel, aiClient);
 }
 
-async function callGemini(message: string, system: string): Promise<AIRecommendation> {
-  const response = await geminiAI.models.generateContent({
-    model: "gemini-3-flash-preview",
+async function callGemini(message: string, system: string, model: string, client: GoogleGenAI): Promise<AIRecommendation> {
+  const response = await client.models.generateContent({
+    model: model,
     contents: [{ role: 'user', parts: [{ text: message }] }],
     config: {
       systemInstruction: system,
@@ -68,11 +95,9 @@ async function callGemini(message: string, system: string): Promise<AIRecommenda
   }
 }
 
-async function callClaude(message: string, system: string): Promise<AIRecommendation> {
-  if (!anthropicAI) throw new Error('Anthropic API Key missing');
-
-  const response = await anthropicAI.messages.create({
-    model: 'claude-3-5-sonnet-20240620', // Using a stable model name
+async function callClaude(message: string, system: string, model: string, client: Anthropic): Promise<AIRecommendation> {
+  const response = await client.messages.create({
+    model: model,
     max_tokens: 1024,
     system: system,
     messages: [{ role: 'user', content: message }],
@@ -88,3 +113,4 @@ async function callClaude(message: string, system: string): Promise<AIRecommenda
     throw new Error('AI Response Malformed');
   }
 }
+
