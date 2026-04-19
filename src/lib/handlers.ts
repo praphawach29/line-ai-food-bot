@@ -44,10 +44,13 @@ export async function handleTextMessage(userId: string, text: string, replyToken
     
     const recommended = menus.filter(m => (aiResult.menu_ids || []).includes(m.id));
     
+    // Improved formatting with more line breaks
     let textReply = `✨ ${aiResult.intro}`;
+    
     if (aiResult.reason && aiResult.reason.trim() !== '') {
-      textReply += `\n\n💡 ${aiResult.reason}`;
+      textReply += `\n\n💡 ${aiResult.reason.replace(/\n/g, '\n\n')}`; // Double line breaks for readability
     }
+    
     if (aiResult.tips && aiResult.tips.trim() !== '') {
       textReply += `\n\n🍃 ${aiResult.tips}`;
     }
@@ -55,12 +58,12 @@ export async function handleTextMessage(userId: string, text: string, replyToken
     const messages: any[] = [
       {
         type: 'text',
-        text: textReply,
+        text: textReply.trim(),
       }
     ];
 
     if (recommended.length > 0) {
-      messages.push(flex.buildMenuCarousel(recommended, 'เมนูแนะนำสำหรับคุณ'));
+      messages.push(flex.buildMenuCarousel(recommended, 'เมนูยอดฮิตที่คุณอาจจะชอบค่ะ'));
     }
 
     // 2. Reply ONLY ONCE at the end of process
@@ -78,7 +81,7 @@ export async function handleTextMessage(userId: string, text: string, replyToken
 export async function handleSlipImage(userId: string, messageId: string, replyToken: string) {
   console.log(`[Image Handler] Received slip from ${userId}`);
   
-  const { data: order } = await supabase
+  const { data: order, error: fetchError } = await supabase
     .from('orders')
     .select('*')
     .eq('line_user_id', userId)
@@ -87,7 +90,7 @@ export async function handleSlipImage(userId: string, messageId: string, replyTo
     .limit(1)
     .single();
 
-  if (!order) {
+  if (fetchError || !order) {
     return lineClient.replyMessage({
       replyToken,
       messages: [{ type: 'text', text: 'ไม่พบออเดอร์ที่รอชำระเงินค่ะ หากโอนแล้วรบกวนแจ้งแอดมินนะคะ' }]
@@ -136,10 +139,8 @@ export async function handlePostback(userId: string, data: string, replyToken: s
   }
 }
 
-// --- Sub-services (simplified from the user's migration) ---
+// --- Sub-services ---
 
-// Real implementations for a fake local cart (In memory for preview only, resets on restart)
-// In production, this should be in Redis or Supabase.
 const userCarts: Record<string, { menuId: string, name: string, price: number, qty: number }[]> = {};
 
 async function addToCart(userId: string, menuId: string, qty: number, replyToken: string) {
@@ -167,9 +168,9 @@ async function addToCart(userId: string, menuId: string, qty: number, replyToken
       flex.withQuickReplies(
         { type: 'text', text: `✅ เพิ่ม "${menu.name}" ลงตะกร้าแล้วค่ะ` },
         [
-          { label: 'ดูตะกร้า', action: 'postback', data: 'action=view_cart' },
-          { label: 'สั่งเพิ่ม', action: 'message', data: 'เมนู' },
-          { label: 'ยืนยันสั่งซื้อ', action: 'postback', data: 'action=checkout' }
+          { label: 'ดูตะกร้า 🛒', action: 'postback', data: 'action=view_cart' },
+          { label: 'สั่งเพิ่ม 🍽️', action: 'message', data: 'เมนู' },
+          { label: 'ยืนยันสั่งซื้อ ✅', action: 'postback', data: 'action=checkout' }
         ]
       )
     ]
@@ -198,10 +199,10 @@ async function showCart(userId: string, replyToken: string) {
     replyToken,
     messages: [
       flex.withQuickReplies(
-        { type: 'text', text: `🛒 ตะกร้าของคุณ:\n\n${itemsText}\n\n🏷️ ยอดรวม: ฿${total}` },
+        { type: 'text', text: `🛒 ตะกร้าของคุณ:\n\n${itemsText}\n\n🏷️ ยอดรวมทั้งหมด: ฿${total}` },
         [
-          { label: 'ยืนยันสั่งซื้อ', action: 'postback', data: 'action=checkout' },
-          { label: 'สั่งเพิ่ม', action: 'message', data: 'เมนู' }
+          { label: 'ยืนยันสั่งซื้อ ✅', action: 'postback', data: 'action=checkout' },
+          { label: 'สั่งเพิ่ม 🍽️', action: 'message', data: 'เมนู' }
         ]
       )
     ]
@@ -239,16 +240,17 @@ async function payTransfer(userId: string, replyToken: string) {
   let ppName = 'นาย ทดสอบ ระบบ';
   let ppNum = '0812345678';
   try {
-    const fs = require('fs');
-    const path = require('path');
     const s = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'settings.json'), 'utf-8'));
     if (s.promptpay_name) ppName = s.promptpay_name;
     if (s.promptpay_number) ppNum = s.promptpay_number;
   } catch(e) {}
 
   await createOrder(userId, replyToken, 'transfer', 'pending_payment', 
-    `กรุณาโอนเงินมาที่\nพร้อมเพย์: ${ppNum}\nชื่อบัญชี: ${ppName}\n\n📸 โอนแล้วส่งสลิปมาในแชทนี้ได้เลยค่ะ`);
+    `💰 กรุณาโอนเงินมาที่\n\n🏦 พร้อมเพย์: ${ppNum}\n👤 ชื่อบัญชี: ${ppName}\n\n📸 โอนแล้วส่งรูปสลิปมาในแชทนี้ได้เลยค่ะ`);
 }
+
+import fs from 'fs';
+import path from 'path';
 
 async function createOrder(userId: string, replyToken: string, paymentMethod: string, status: string, customMessage?: string) {
   const cart = userCarts[userId] || [];
@@ -258,33 +260,59 @@ async function createOrder(userId: string, replyToken: string, paymentMethod: st
 
   const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
-  // 1. Create order in generic format
-  const { data: order, error } = await supabase.from('orders').insert({
-    line_user_id: userId,
-    total_amount: total,
-    status: status,
-    payment_method: paymentMethod
-  }).select().single();
+  try {
+    // 1. Create order
+    const { data: order, error: orderError } = await supabase.from('orders').insert({
+      line_user_id: userId,
+      total_amount: total,
+      status: status,
+      payment_method: paymentMethod,
+      updated_at: new Date().toISOString()
+    }).select().single();
 
-  if (error || !order) {
-    console.error('Order Error:', error);
-    return lineClient.replyMessage({ replyToken, messages: [{ type: 'text', text: 'ขออภัย เกิดปัญหาในการสร้างออเดอร์' }] });
+    if (orderError || !order) {
+      console.error('Order Insert Error:', orderError);
+      return lineClient.replyMessage({ 
+        replyToken, 
+        messages: [{ type: 'text', text: `ขออภัย เกิดปัญหาในการสร้างออเดอร์: ${orderError?.message || 'Unknown Error'}` }] 
+      });
+    }
+
+    // 2. Create order items
+    const orderItems = cart.map(item => ({
+      order_id: order.id,
+      menu_id: item.menuId,
+      menu_name: item.name,
+      quantity: item.qty,
+      unit_price: item.price,
+      subtotal: item.price * item.qty
+    }));
+
+    const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+    if (itemsError) {
+      console.error('Order Items Error:', itemsError);
+      // We don't fail the whole flow if items fail, but we ideally should.
+    }
+
+    // 3. Clear local cart
+    delete userCarts[userId];
+
+    // 4. Reply
+    const msgText = customMessage || `✅ สั่งซื้อสำเร็จ! ออเดอร์ #${order.id} เรียบร้อยแล้วค่ะ\nรอรับอาหารซักครู่นะคะ`;
+
+    return lineClient.replyMessage({
+      replyToken,
+      messages: [{ type: 'text', text: msgText }]
+    });
+  } catch (err: any) {
+    console.error('Create Order Exception:', err);
+    return lineClient.replyMessage({ 
+      replyToken, 
+      messages: [{ type: 'text', text: 'ขออภัย เกิดความผิดพลาดทางเทคนิคในการสร้างออเดอร์' }] 
+    });
   }
-
-  // 2. Clear local cart
-  delete userCarts[userId];
-
-  // 3. Reply
-  const msgText = customMessage || `✅ สั่งซื้อสำเร็จ! ออเดอร์ #${order.id} ได้รับการคอนเฟิร์มแล้ว (เงินสด)\nรอรับอาหารได้เลยค่ะ`;
-
-  return lineClient.replyMessage({
-    replyToken,
-    messages: [
-      { type: 'text', text: msgText }
-    ]
-  });
 }
 
 async function confirmOrder(userId: string, replyToken: string) {
-  return startCheckout(userId, replyToken); // Route old flow to checkout flow
+  return startCheckout(userId, replyToken);
 }
