@@ -12,123 +12,99 @@ export interface AIRecommendation {
   tips: string | null;
 }
 
-const getGeminiClient = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const getGeminiClient    = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const getAnthropicClient = () => {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
+  return key ? new Anthropic({ apiKey: key }) : null;
 };
 
 export async function getAIRecommendation(userMessage: string, menuList: string): Promise<AIRecommendation> {
-  let provider = (process.env.AI_PROVIDER as AIChoice) || 'gemini';
-  
-  let storeName = 'ร้านข้าวต้มนิดา';
-  let botPrompt = 'คุณคือพนักงานเสิร์ฟและผู้ช่วยแนะนำเมนูอาหารมืออาชีพประจำ "ร้านข้าวต้มนิดา"';
-  let botGender = 'female';
-  
-  let geminiModel = 'gemini-2.5-flash';
+  let provider       = (process.env.AI_PROVIDER as AIChoice) || 'gemini';
+  let storeName      = 'ร้านข้าวต้มนิดา';
+  let botPrompt      = 'พนักงานเสิร์ฟมืออาชีพ เป็นกันเอง อบอุ่น รู้จักเมนูทุกอย่างในร้าน';
+  let botGender      = 'female';
+  let geminiModel    = 'gemini-2.5-flash';
   let anthropicModel = 'claude-3-5-sonnet-20240620';
 
   try {
-    const SETTINGS_PATH = path.join(process.cwd(), 'settings.json');
-    if (fs.existsSync(SETTINGS_PATH)) {
-      const s = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
-      if (s.store_name) storeName = s.store_name;
-      if (s.bot_prompt) botPrompt = s.bot_prompt;
-      if (s.ai_provider) provider = s.ai_provider;
-      if (s.gemini_model) geminiModel = s.gemini_model;
+    const p = path.join(process.cwd(), 'settings.json');
+    if (fs.existsSync(p)) {
+      const s = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      if (s.store_name)      storeName      = s.store_name;
+      if (s.bot_prompt)      botPrompt      = s.bot_prompt;
+      if (s.ai_provider)     provider       = s.ai_provider;
+      if (s.gemini_model)    geminiModel    = s.gemini_model;
       if (s.anthropic_model) anthropicModel = s.anthropic_model;
-      if (s.bot_gender) botGender = s.bot_gender;
+      if (s.bot_gender)      botGender      = s.bot_gender;
     }
-  } catch(e) {}
-  
-  const politeTail   = botGender === 'female' ? 'ค่ะ'  : botGender === 'male' ? 'ครับ' : 'จ้า';
-  const politeMid    = botGender === 'female' ? 'คะ'   : botGender === 'male' ? 'ครับ' : 'นะ';
-  const politeSoft   = botGender === 'female' ? 'นะคะ' : botGender === 'male' ? 'นะครับ' : 'นะ';
+  } catch {}
 
-  const systemPrompt = `คุณชื่อ "น้องนิดา" พนักงานต้อนรับร้าน ${storeName} ที่คุ้นเคยกับลูกค้าเหมือนรู้จักกันมานาน
+  const tail = botGender === 'female' ? 'ค่ะ' : botGender === 'male' ? 'ครับ' : 'จ้า';
+  const mid  = botGender === 'female' ? 'คะ'  : botGender === 'male' ? 'ครับ' : 'นะ';
+  const soft = botGender === 'female' ? 'นะคะ': botGender === 'male' ? 'นะครับ': 'นะ';
 
-บุคลิก:
-- ${botPrompt}
-- พูดจาเป็นกันเอง อบอุ่น แต่ยังสุภาพ ไม่ทางการเกินไป
-- ห่วงใยลูกค้าจริงๆ ไม่ใช่แค่ขายของ
-- บางทีก็พูดแบบเป็นธรรมชาติ เช่น "โอ้โห วันนี้อากาศร้อนเลยนะ${politeSoft}"
-- หางเสียงที่ใช้เป็นหลัก: ${politeTail} / ${politeMid} / ${politeSoft}
+  const systemPrompt = `คุณชื่อ "น้องนิดา" พนักงานต้อนรับร้าน ${storeName}
+บุคลิก: ${botPrompt}
+เพศ: ${botGender === 'female' ? 'ผู้หญิง' : botGender === 'male' ? 'ผู้ชาย' : 'เป็นกันเอง'}
+หางเสียง: "${tail}" / "${mid}" / "${soft}" — ห้ามใช้หางเสียงผิดเพศเด็ดขาด
 
-สไตล์การตอบ:
-- เริ่มต้นด้วยการรับรู้ความต้องการลูกค้าก่อน ไม่ใช่แค่ยัดเมนูทันที
-  ตัวอย่างดีๆ:
-  "อ๋อ ช่วงนี้กินเผ็ดไม่ไหวเหรอ${politeSoft} เดี๋ยวเลือกให้เลย"
-  "หิวมากเลยเหรอ${politeSoft} เดี๋ยวนิดาหาเมนูแน่นๆ มาให้เลย"
-  "อ้าว ดูแลสุขภาพอยู่เหรอ${politeSoft} ดีเลยนะ เดี๋ยวเลือกของอร่อยแต่ไม่อ้วนมาให้"
+กฎการตอบ (สำคัญมาก):
+- ข้อความรวมทั้งหมดต้องไม่เกิน 5 บรรทัดบนมือถือ
+- intro: 1 ประโยคสั้นๆ รับรู้ความต้องการลูกค้า เป็นธรรมชาติ ไม่ทางการ
+  ดีๆ: "อ๋อ ไม่อยากอ้วน${soft} เดี๋ยวเลือกให้เลย"
+  ห้าม: "แน่นอน${tail}!" / "ยินดีให้บริการ${tail}!"
+- reason: บรรยายเมนูสั้นๆ ไม่เกิน 2-3 บรรทัด ให้ได้กลิ่นอายรสชาติ
+  ดีๆ: "ยำวุ้นเส้นรสจัดจ้าน เปรี้ยวนำ เผ็ดตาม เบาสบายไม่อ้วนเลย${tail}"
+  ห้าม: อธิบายยาวเป็นหัวข้อหลายข้อ
+- tips: 1 ประโยคสั้นๆ หรือ null ถ้าไม่จำเป็น
+- ห้ามบอกว่าตัวเองเป็น AI
 
-- บรรยายอาหารให้น่ากินด้วยคำที่ได้ยินแล้วน้ำลายสอ
-  ตัวอย่างดีๆ: "หอมกระเทียมเจียวฟุ้งเลยค่ะ", "ซุปกระดูกหมูต้มทั้งวัน ใสแต่รสชาติลึก", "เผ็ดซ่าแบบจี๊ดใจ"
-
-- แนะนำเครื่องดื่มหรือของคู่ได้ แต่ต้องเป็นธรรมชาติ ไม่ใช่การขาย เช่น
-  "ทานคู่กับชาเย็นเย็นๆ จะดีมากเลย${politeSoft}"
-
-- ห้ามขึ้นต้นด้วยคำซ้ำๆ เช่น "แน่นอน!" "ยินดีให้บริการ!" "แน่นอน${politeTail}!" ทุกประโยค
-- ห้ามพูดว่าตัวเองเป็น AI หรือระบบ ถ้าถูกถามให้บอกว่าเป็นพนักงานร้าน
-- ห้ามใช้หางเสียงผิดเพศเด็ดขาด (ใช้เฉพาะ ${politeTail} / ${politeMid} / ${politeSoft})
-
-ข้อมูลเมนูทั้งหมด:
+เมนูทั้งหมด:
 ${menuList}
 
-ตอบเป็น JSON เท่านั้น ห้ามมี markdown หรือข้อความนอก JSON:
+ตอบเป็น JSON เท่านั้น ห้ามมีข้อความนอก JSON:
 {
-  "intro": "ประโยคสั้นๆ 1-2 บรรทัด รับรู้ความต้องการลูกค้า ฟังดูเป็นธรรมชาติ",
-  "reason": "บรรยายเมนูที่แนะนำให้น่ากิน ใช้ภาษาที่ได้กลิ่นอายรสชาติ แบ่งเป็นย่อหน้าสั้นๆ ไม่ยาวเกินไป",
+  "intro": "...",
+  "reason": "...",
   "menu_ids": ["M001"],
-  "tips": "ปิดท้ายอย่างเป็นธรรมชาติ เช่น แนะนำเครื่องดื่มคู่ หรือคำอวยพรที่ฟังไม่ขายของ (ใส่ null ถ้าไม่จำเป็น)"
+  "tips": "..." หรือ null
 }`;
 
   if (provider === 'anthropic') {
-    const aiClient = getAnthropicClient();
-    if (aiClient) {
-      return callClaude(userMessage, systemPrompt, anthropicModel, aiClient);
-    }
-    console.warn('Anthropic API Key missing, falling back to Gemini');
+    const client = getAnthropicClient();
+    if (client) return callClaude(userMessage, systemPrompt, anthropicModel, client);
+    console.warn('No Anthropic key, falling back to Gemini');
   }
-  
-  const aiClient = getGeminiClient();
-  return callGemini(userMessage, systemPrompt, geminiModel, aiClient);
+
+  return callGemini(userMessage, systemPrompt, geminiModel, getGeminiClient());
 }
 
-async function callGemini(message: string, system: string, model: string, client: GoogleGenAI): Promise<AIRecommendation> {
-  const response = await client.models.generateContent({
-    model: model,
-    contents: [{ role: 'user', parts: [{ text: message }] }],
-    config: {
-      systemInstruction: system,
-      responseMimeType: "application/json",
-    }
+async function callGemini(msg: string, system: string, model: string, client: GoogleGenAI): Promise<AIRecommendation> {
+  const res = await client.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: msg }] }],
+    config: { systemInstruction: system, responseMimeType: 'application/json' }
   });
-
   try {
-    const rawText = response.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(rawText);
+    return JSON.parse(res.text.replace(/```json|```/gi, '').trim());
   } catch (err) {
-    console.error('Gemini JSON Parse Error:', err, response.text);
+    console.error('Gemini parse error:', err);
     throw new Error('AI Response Malformed');
   }
 }
 
-async function callClaude(message: string, system: string, model: string, client: Anthropic): Promise<AIRecommendation> {
-  const response = await client.messages.create({
-    model: model,
-    max_tokens: 1024,
-    system: system,
-    messages: [{ role: 'user', content: message }],
+async function callClaude(msg: string, system: string, model: string, client: Anthropic): Promise<AIRecommendation> {
+  const res = await client.messages.create({
+    model, max_tokens: 512,
+    system,
+    messages: [{ role: 'user', content: msg }],
   });
-
   try {
-    const content = response.content[0];
-    if (content.type !== 'text') throw new Error('Non-text response from Claude');
-    const rawText = content.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(rawText);
+    const block = res.content[0];
+    if (block.type !== 'text') throw new Error('Non-text response');
+    return JSON.parse(block.text.replace(/```json|```/gi, '').trim());
   } catch (err) {
-    console.error('Claude JSON Parse Error:', err);
+    console.error('Claude parse error:', err);
     throw new Error('AI Response Malformed');
   }
 }
