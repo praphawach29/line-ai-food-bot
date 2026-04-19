@@ -154,7 +154,15 @@ export default function OrdersManager() {
   );
 }
 
-function OrderCard({ order, onAdvance, buttonText, buttonColor, disabled = false }: { order: any, onAdvance: () => void, buttonText: string, buttonColor: string, disabled?: boolean }) {
+interface OrderCardProps {
+  order: any;
+  onAdvance: () => void;
+  buttonText: string;
+  buttonColor: string;
+  disabled?: boolean;
+}
+
+function OrderCard({ order, onAdvance, buttonText, buttonColor, disabled = false }: OrderCardProps) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3 md:p-4 shadow-sm hover:shadow-md transition-all group">
       <div className="flex justify-between items-start mb-2">

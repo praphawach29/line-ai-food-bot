@@ -145,8 +145,9 @@ const userCarts: Record<string, { menuId: string, name: string, price: number, q
 
 async function addToCart(userId: string, menuId: string, qty: number, replyToken: string) {
   const { data: menu } = await supabase.from('menus').select('*').eq('id', menuId).single();
+  const { data: menus } = await supabase.from('menus').select('*').eq('available', true);
   
-  if (!menu) {
+  if (!menu || !menus) {
     return lineClient.replyMessage({
       replyToken,
       messages: [{ type: 'text', text: 'ขออภัย ไม่พบเมนูนี้ค่ะ' }]
@@ -162,11 +163,20 @@ async function addToCart(userId: string, menuId: string, qty: number, replyToken
     userCarts[userId].push({ menuId, name: menu.name, price: menu.price, qty });
   }
 
+  // Get a quick drink/upsell suggestion from AI
+  const menuList = menus.map(m => `ID:${m.id} | ${m.name} | Tags:${m.tags?.join(',') || ''}`).join('\n');
+  const aiResult = await getAIRecommendation(`ลูกค้าเพิ่งสั่ง ${menu.name} ช่วยแนะนำเครื่องดื่มหรือของทานเล่นที่เข้ากับเมนูนี้สั้นๆ หน่อยค่ะ`, menuList);
+
+  let upsellText = `✅ เพิ่ม "${menu.name}" ลงตะกร้าแล้วค่ะ`;
+  if (aiResult.tips || aiResult.reason) {
+    upsellText += `\n\n💡 ${aiResult.reason || aiResult.tips}`;
+  }
+
   return lineClient.replyMessage({
     replyToken,
     messages: [
       flex.withQuickReplies(
-        { type: 'text', text: `✅ เพิ่ม "${menu.name}" ลงตะกร้าแล้วค่ะ` },
+        { type: 'text', text: upsellText },
         [
           { label: 'ดูตะกร้า 🛒', action: 'postback', data: 'action=view_cart' },
           { label: 'สั่งเพิ่ม 🍽️', action: 'message', data: 'เมนู' },
@@ -192,14 +202,14 @@ async function showCart(userId: string, replyToken: string) {
     });
   }
 
-  const itemsText = cart.map((i, idx) => `${idx + 1}. ${i.name} (x${i.qty}) - ฿${i.price * i.qty}`).join('\n');
+  const itemsText = cart.map((i, idx) => `▫️ ${i.name} (x${i.qty})\n   ฿${i.price * i.qty}`).join('\n\n');
   const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
   return lineClient.replyMessage({
     replyToken,
     messages: [
       flex.withQuickReplies(
-        { type: 'text', text: `🛒 ตะกร้าของคุณ:\n\n${itemsText}\n\n🏷️ ยอดรวมทั้งหมด: ฿${total}` },
+        { type: 'text', text: `🛒 รายการในตะกร้าของคุณ\n━━━━━━━━━━━━━━\n\n${itemsText}\n\n🏷️ ยอดรวมสุทธิ: ฿${total}` },
         [
           { label: 'ยืนยันสั่งซื้อ ✅', action: 'postback', data: 'action=checkout' },
           { label: 'สั่งเพิ่ม 🍽️', action: 'message', data: 'เมนู' }
@@ -222,7 +232,7 @@ async function startCheckout(userId: string, replyToken: string) {
     replyToken,
     messages: [
       flex.withQuickReplies(
-        { type: 'text', text: 'เลือกวิธีชำระเงินได้เลยค่ะ 💳💵' },
+        { type: 'text', text: '💰 เลือกวิธีที่สะดวกเพื่อชำระเงินได้เลยค่ะ' },
         [
           { label: 'โอนเงิน', action: 'postback', data: 'action=pay_transfer' },
           { label: 'เงินสด (หน้าร้าน)', action: 'postback', data: 'action=pay_cash' }
@@ -246,7 +256,7 @@ async function payTransfer(userId: string, replyToken: string) {
   } catch(e) {}
 
   await createOrder(userId, replyToken, 'transfer', 'pending_payment', 
-    `💰 กรุณาโอนเงินมาที่\n\n🏦 พร้อมเพย์: ${ppNum}\n👤 ชื่อบัญชี: ${ppName}\n\n📸 โอนแล้วส่งรูปสลิปมาในแชทนี้ได้เลยค่ะ`);
+    `💳 รายละเอียดการโอนเงิน\n\n🏦 พร้อมเพย์: ${ppNum}\n👤 ชื่อบัญชี: ${ppName}\n\n📸 โอนแล้วอย่าลืมส่งสลิปมาให้แอดมินเช็กนะคะ!`);
 }
 
 import fs from 'fs';
@@ -259,10 +269,12 @@ async function createOrder(userId: string, replyToken: string, paymentMethod: st
   }
 
   const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+  const generatedId = Math.floor(Date.now() / 1000) + Math.floor(Math.random() * 1000);
 
   try {
-    // 1. Create order
+    // 1. Create order (Providing id explicitly to fix null constraint issue)
     const { data: order, error: orderError } = await supabase.from('orders').insert({
+      id: generatedId,
       line_user_id: userId,
       total_amount: total,
       status: status,
@@ -274,7 +286,7 @@ async function createOrder(userId: string, replyToken: string, paymentMethod: st
       console.error('Order Insert Error:', orderError);
       return lineClient.replyMessage({ 
         replyToken, 
-        messages: [{ type: 'text', text: `ขออภัย เกิดปัญหาในการสร้างออเดอร์: ${orderError?.message || 'Unknown Error'}` }] 
+        messages: [{ type: 'text', text: `ขออภัย เกิดปัญหาในการบันทึกออเดอร์\nรหัสข้อผิดพลาด: ${orderError?.code}\n${orderError?.message}` }] 
       });
     }
 
@@ -291,14 +303,13 @@ async function createOrder(userId: string, replyToken: string, paymentMethod: st
     const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
     if (itemsError) {
       console.error('Order Items Error:', itemsError);
-      // We don't fail the whole flow if items fail, but we ideally should.
     }
 
     // 3. Clear local cart
     delete userCarts[userId];
 
     // 4. Reply
-    const msgText = customMessage || `✅ สั่งซื้อสำเร็จ! ออเดอร์ #${order.id} เรียบร้อยแล้วค่ะ\nรอรับอาหารซักครู่นะคะ`;
+    const msgText = customMessage || `✨ สั่งซื้อสำเร็จ! ออเดอร์ #${order.id} เรียบร้อยแล้วค่ะ\nเดี๋ยวทางร้านรีบจัดเตรียมอาหารให้นะคะ`;
 
     return lineClient.replyMessage({
       replyToken,
