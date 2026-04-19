@@ -107,7 +107,23 @@ export default function MenuManager() {
 
               <div className="mb-2 md:mb-3">
                 <h3 className="font-bold text-sm md:text-base text-slate-800 leading-tight line-clamp-1">{m.name}</h3>
-                <p className="text-slate-500 text-[10px] md:text-xs mt-0.5">{m.id} • ฿{m.price}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <p className="text-slate-500 text-[10px] md:text-xs">{m.id} • ฿</p>
+                  <input 
+                    type="number" 
+                    value={m.price}
+                    onChange={async (e) => {
+                      const newPrice = Number(e.target.value);
+                      setMenus(prev => prev.map(menu => menu.id === m.id ? { ...menu, price: newPrice } : menu));
+                      await fetch(`/api/menus/${m.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ price: newPrice })
+                      });
+                    }}
+                    className="w-14 text-[10px] md:text-xs border border-slate-200 rounded px-1 py-0.5 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                  />
+                </div>
               </div>
               
               <div className="flex flex-wrap gap-1 md:gap-1.5 mb-3 md:mb-4">

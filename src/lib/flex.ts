@@ -133,3 +133,17 @@ export function buildOrderStatusCard(orderId: string, status: string, total: num
   };
   return message;
 }
+
+export function withQuickReplies(message: any, items: { label: string, action: 'message' | 'postback', data?: string }[]) {
+  const quickReplyItems = items.map(item => ({
+    type: 'action',
+    action: item.action === 'message' 
+      ? { type: 'message', label: item.label, text: item.data || item.label }
+      : { type: 'postback', label: item.label, data: item.data || `action=${item.label}` }
+  }));
+
+  return {
+    ...message,
+    quickReply: { items: quickReplyItems }
+  };
+}

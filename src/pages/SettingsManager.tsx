@@ -165,6 +165,24 @@ export default function SettingsManager() {
           </div>
           <div className="p-5">
             
+            <div className="mb-5">
+              <label className="block text-sm font-bold text-slate-700 mb-2">เพศของบอท / หางเสียง (Bot Gender)</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="bot_gender" value="female" checked={settings.bot_gender === 'female'} onChange={handleChange} className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-medium">หญิง (ค่ะ/จ๊ะ)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="bot_gender" value="male" checked={settings.bot_gender === 'male'} onChange={handleChange} className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-medium">ชาย (ครับ/ฮะ)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="bot_gender" value="neutral" checked={settings.bot_gender === 'neutral'} onChange={handleChange} className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-medium">เป็นกันเอง (ไม่มีหางเสียงทางการ)</span>
+                </label>
+              </div>
+            </div>
+
             <div className="mb-6">
               <label className="block text-sm font-bold text-slate-700 mb-3">ให้ AI รับบทบาทเป็นใคร? (System Prompt)</label>
               <textarea 

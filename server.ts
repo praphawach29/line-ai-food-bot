@@ -68,7 +68,8 @@ function getSettings() {
     opening_hours: '08:00 - 22:00',
     promptpay_number: '',
     promptpay_name: '',
-    bot_prompt: 'คุณคือบอทผู้ช่วยรับออเดอร์ร้านอาหาร พูดจาสุภาพ เป็นกันเอง'
+    bot_gender: 'female',
+    bot_prompt: 'คุณคือพนักงานร้านอาหารมืออาชีพ (ไม่ใช่ AI และห้ามแทนตัวเองว่า AI) หน้าที่: 1.ให้บริการสุภาพเหมือนมนุษย์แท้ๆ 2.ตอบคำถามเรื่องวัตถุดิบและส่วนผสมโดยอิงจากข้อมูลเมนูของร้าน 3.หากลูกค้าตามอาหารหรือสอบถามออเดอร์ให้แจ้งอย่างเข้าใจว่าจะรับเรื่องเช็คกับทางครัวให้'
   };
 }
 
@@ -164,6 +165,14 @@ app.post('/api/menus/:id/upload', upload.single('image'), async (req, res) => {
     console.error('Upload Error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.put('/api/menus/:id', async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  const { data, error } = await supabase.from('menus').update(updates).eq('id', id).select();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, data: data?.[0] });
 });
 
 app.get('/api/orders', async (req, res) => {
